@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <PRODUCT Name="rekordbox" Version="6.0.0" Company="AlphaTheta" />
+  <COLLECTION Entries="2">
+    <TRACK TrackID="1" Name="A Minor (Original Mix)" Artist="Alpha" Genre="Techno" Kind="AIFF File" Size="1000" TotalTime="210" AverageBpm="124.00" DateAdded="2026-01-01" Tonality="Am" Location="file://localhost/music/Alpha%20-%20A%20Minor%20%28Original%20Mix%29.aiff">
+      <TEMPO Inizio="0.500" Bpm="124.00" Metro="4/4" Battito="1" />
+    </TRACK>
+    <TRACK TrackID="2" Name="Don't Stop" Artist="Bravo" Genre="House" Kind="AIFF File" Size="2048" TotalTime="200" AverageBpm="128.00" DateAdded="2026-01-01" Tonality="C" Location="file://localhost/music/Bravo%20-%20Don%27t%20Stop.aiff">
+      <TEMPO Inizio="0.250" Bpm="128.00" Metro="4/4" Battito="1" />
+    </TRACK>
+  </COLLECTION>
+  <PLAYLISTS>
+    <NODE Type="0" Name="ROOT" Count="2">
+      <NODE Name="Set 1" Type="1" KeyType="0" Entries="2">
+        <TRACK Key="1" />
+        <TRACK Key="2" />
+      </NODE>
+      <NODE Name="Set 2" Type="1" KeyType="0" Entries="1">
+        <TRACK Key="2" />
+      </NODE>
+    </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>

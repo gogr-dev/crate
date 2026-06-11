@@ -170,9 +170,21 @@ tracks whose files are missing on disk. `--prune` removes those dead entries.
 
 ```bash
 pip install -e ".[dev]"
-pytest                  # no network or ffmpeg required
+pytest                                       # no network or ffmpeg required
+pytest --cov=crate --cov-report=term-missing # with coverage
 ```
 
-Tests cover the Camelot wheel + compatible-key logic, title parsing/junk
-stripping, Rekordbox XML structure + `Location` URL encoding, and DB
-insert/dedupe/crate assignment.
+The suite is network-free and ffmpeg-free: audio is synthesized with
+numpy/soundfile and yt-dlp is mocked at the `download_audio` boundary. Tests
+cover the Camelot wheel + compatible-key logic, title parsing/junk stripping,
+Rekordbox XML (structure, `Location` encoding, and a byte-for-byte golden
+snapshot under `tests/golden/`), DB insert/dedupe/crate assignment, every CLI
+command end-to-end, and a full scan→crates→export pipeline that verifies
+analysis output reaches the DB, the on-disk tags, and the exported XML.
+
+If you intentionally change the XML format, regenerate the golden snapshot and
+review the diff:
+
+```bash
+python -m tests.test_rekordbox_golden        # rewrites tests/golden/collection.xml
+```
