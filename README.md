@@ -40,6 +40,23 @@ crate list --compatible 8A                      # harmonically mixable with 8A
 crate export                                     # write rekordbox.xml
 ```
 
+## How it works
+
+One command takes a track from a URL or search query all the way into your
+Rekordbox library: **download** (yt-dlp grabs bestaudio, ffmpeg converts to
+AIFF) → **analyze** (librosa for BPM + key, mapped to Camelot) → **tag**
+(mutagen writes ID3) → **track** (a row in SQLite) → **export** (Rekordbox XML
+you import once). `scan` and `analyze` cover files you already have.
+
+State lives in three places:
+
+- `~/.crate/config.toml` — settings (library folder, audio format, default crate).
+- `~/.crate/crate.db` — the SQLite manifest: one row per track plus crate
+  assignments. This is the source of truth; the audio files and exported XML are
+  derived from it.
+- the **library folder** (default `~/Music/crate/`) — the audio files themselves,
+  named `Artist - Title.aiff`, and the generated `rekordbox.xml`.
+
 ## Commands
 
 ### `crate add <url-or-query>`
@@ -65,9 +82,11 @@ crate add "<url>" --force                        # re-download a known URL
 - A source URL already in the DB is skipped unless you pass `--force`.
 
 ### `crate scan <folder> [--crate NAME] [--genre G] [--no-analyze]`
-Walk a folder for audio files (`aiff, wav, flac, mp3, m4a`), then analyze, tag,
-and add any not already tracked (deduped by absolute path). Shows a progress bar
-and a summary table (added / skipped / failed).
+Walk a folder (recursively) for audio files (`aiff, aif, wav, flac, mp3, m4a,
+mp4`), then analyze, tag, and add any not already tracked. Files already in the
+DB (matched by absolute path) are skipped — never re-analyzed — so re-running a
+scan only picks up new files. Shows a progress bar and a summary table
+(added / skipped / failed).
 
 Use `--no-analyze` to trust the files' existing tags and skip BPM/key detection —
 important when pointing it at a library already analyzed by Mixed In Key or
@@ -87,6 +106,9 @@ crate analyze 12
 crate analyze "~/Music/crate/Fisher - Losing It.aiff"
 ```
 
+Exits with a nonzero status if any target fails to analyze or its file is
+missing on disk (other targets are still processed).
+
 ### `crate list`
 Print the library (or a filtered slice) as a table: ID, Title, Artist, BPM,
 Key (Camelot), Crates, Added.
@@ -96,7 +118,7 @@ crate list --crate "Peak Time"
 crate list --key 8A                 # exact Camelot key
 crate list --compatible 8A          # 8A + relative (8B) + neighbours (7A, 9A)
 crate list --bpm 120-126
-crate list --sort bpm               # bpm | key | added
+crate list --sort bpm               # bpm | key | added (default: added)
 ```
 
 ### Crates
@@ -109,7 +131,8 @@ crate crate rm "Peak Time"          # remove the crate (tracks are kept)
 
 ### `crate export [--out PATH]`
 Generate Rekordbox XML for the whole collection plus every crate as a playlist.
-Default output: `~/Music/crate/rekordbox.xml`.
+Default output: `~/Music/crate/rekordbox.xml`. Exits with an error (and writes
+nothing) if the library is empty.
 
 **Import into Rekordbox:**
 1. Preferences → Advanced → Database → rekordbox xml
@@ -158,11 +181,16 @@ tracks whose files are missing on disk. `--prune` removes those dead entries.
 - **Camelot** is written into the comment field; the standard key (e.g. `Am`)
   into the key field (ID3 `TKEY`), so both Rekordbox and Camelot-aware workflows
   see the right thing.
+- **Keys use sharps, not flats** — the XML `Tonality` and the key tag spell
+  black keys as `G#m`, `A#m`, etc. (never `Abm`/`Bbm`). Rekordbox accepts both;
+  this only affects how the key column reads.
 - **AIFF tagging uses ID3** (the format embeds an ID3 chunk) — handled via
   `mutagen.aiff`.
 - The **`Location`** attribute in the exported XML is a `file://localhost/` URL
   with the absolute path percent-encoded (spaces, apostrophes, etc.), which is
-  the part Rekordbox is pickiest about.
+  the part Rekordbox is pickiest about. The path is fully resolved first, so
+  symlinks are followed — if your library lives under a symlink, the XML points
+  at the real target.
 - yt-dlp can't write AIFF directly, so `crate` downloads bestaudio and converts
   with ffmpeg.
 
