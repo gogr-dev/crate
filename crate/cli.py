@@ -78,6 +78,7 @@ def _analyze_and_tag(
         tonality=result.tonality,
         camelot=result.camelot,
         duration=result.duration,
+        first_beat=result.first_beat,
     )
     return result
 
@@ -90,6 +91,7 @@ def add(
     crate: Optional[str] = typer.Option(None, "--crate", help="Assign to this crate."),
     artist: Optional[str] = typer.Option(None, "--artist", help="Override artist."),
     title: Optional[str] = typer.Option(None, "--title", help="Override title."),
+    genre: Optional[str] = typer.Option(None, "--genre", help="Set genre."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip search confirmation."),
     force: bool = typer.Option(False, "--force", help="Re-download even if known."),
 ) -> None:
@@ -137,6 +139,7 @@ def add(
     except DownloadError as exc:
         die(f"download failed: {exc}")
 
+    track_genre = genre if genre is not None else result.genre
     size = result.filepath.stat().st_size if result.filepath.exists() else 0
     try:
         track_id = db.add_track(
@@ -144,7 +147,7 @@ def add(
             path=str(result.filepath),
             title=result.title,
             artist=result.artist,
-            genre=result.genre,
+            genre=track_genre,
             source_url=result.source_url,
             duration=result.duration,
             size=size,
@@ -159,7 +162,7 @@ def add(
         with console.status("[cyan]Analyzing BPM + key…[/]"):
             analysis = _analyze_and_tag(
                 conn, track_id, result.filepath,
-                title=result.title, artist=result.artist, genre=result.genre,
+                title=result.title, artist=result.artist, genre=track_genre,
             )
         note = " [yellow](octave-corrected)[/]" if analysis.bpm_corrected else ""
         console.print(
@@ -180,8 +183,19 @@ def add(
 def scan(
     folder: Path = typer.Argument(..., help="Folder to scan for audio files."),
     crate: Optional[str] = typer.Option(None, "--crate", help="Assign found tracks."),
+    genre: Optional[str] = typer.Option(None, "--genre", help="Set genre on found tracks."),
+    no_analyze: bool = typer.Option(
+        False,
+        "--no-analyze",
+        help="Add files using their existing tags; don't run/overwrite analysis.",
+    ),
 ) -> None:
-    """Analyze, tag, and add untracked audio files from a folder."""
+    """Analyze, tag, and add untracked audio files from a folder.
+
+    With --no-analyze, existing tags are trusted and files are added without
+    re-running BPM/key detection (useful for libraries already analyzed by
+    Mixed In Key, Rekordbox, etc.).
+    """
     folder = folder.expanduser()
     if not folder.is_dir():
         die(f"not a directory: {folder}")
@@ -218,18 +232,20 @@ def scan(
                     p_artist, p_title = parse_title(path.stem)
                     t_artist = t_artist or p_artist
                     t_title = t_title or p_title or path.stem
+                t_genre = genre if genre is not None else tags.get("genre", "")
                 track_id = db.add_track(
                     conn,
                     path=str(path),
                     title=t_title,
                     artist=t_artist,
-                    genre=tags.get("genre", ""),
+                    genre=t_genre,
                     size=path.stat().st_size,
                 )
-                _analyze_and_tag(
-                    conn, track_id, path,
-                    title=t_title, artist=t_artist, genre=tags.get("genre", ""),
-                )
+                if not no_analyze:
+                    _analyze_and_tag(
+                        conn, track_id, path,
+                        title=t_title, artist=t_artist, genre=t_genre,
+                    )
                 if crate:
                     db.assign_track(conn, track_id, crate)
                 added += 1
@@ -287,6 +303,38 @@ def analyze(
             )
         except Exception as exc:  # noqa: BLE001
             err_console.print(f"[red]failed[/] #{row['id']}: {exc}")
+
+
+# ---------------------------------------------------------------- rm
+
+@app.command()
+def rm(
+    track_id: int = typer.Argument(..., help="Track id to remove."),
+    delete_file: bool = typer.Option(
+        False, "--delete-file", help="Also delete the audio file from disk."
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
+) -> None:
+    """Remove a track from the library (and its crate assignments)."""
+    conn = get_conn()
+    row = db.get_track(conn, track_id)
+    if not row:
+        die(f"no track with id {track_id}")
+
+    label = f"#{track_id} {row['artist']} - {row['title']}"
+    if not yes and not typer.confirm(f"Remove {label}?", default=False):
+        raise typer.Exit(0)
+
+    db.delete_track(conn, track_id)
+    console.print(f"Removed {label} from the library.")
+
+    if delete_file:
+        path = Path(row["path"])
+        try:
+            path.unlink(missing_ok=True)
+            console.print(f"  Deleted file [dim]{path}[/]")
+        except OSError as exc:
+            err_console.print(f"[yellow]warning:[/] could not delete file: {exc}")
 
 
 # ---------------------------------------------------------------- list
@@ -424,6 +472,12 @@ def export(
     console.print("  1. Preferences → Advanced → Database → rekordbox xml")
     console.print(f"  2. Set 'Imported Library' to: [cyan]{out_path}[/]")
     console.print("  3. In the tree view, open the [cyan]rekordbox xml[/] node and import.")
+    console.print()
+    console.print(
+        "[yellow]Tip:[/] Rekordbox uses the BPM/key/beatgrid from this XML on import. "
+        "To stop it re-analyzing and overwriting them, turn OFF auto-analysis for "
+        "imported tracks (Preferences → Analysis), or don't re-run 'Analyze Track'."
+    )
 
 
 # ---------------------------------------------------------------- config

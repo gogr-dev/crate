@@ -47,6 +47,7 @@ def _track_element(track: Mapping[str, Any]) -> ET.Element:
     bpm = float(_get(track, "bpm", 0) or 0)
     duration = int(round(float(_get(track, "duration", 0) or 0)))
     size = int(_get(track, "size", 0) or 0)
+    first_beat = float(_get(track, "first_beat", 0.0) or 0.0)
 
     el = ET.Element(
         "TRACK",
@@ -64,11 +65,17 @@ def _track_element(track: Mapping[str, Any]) -> ET.Element:
             "Location": location_url(path),
         },
     )
-    # Beatgrid anchor.
+    # Beatgrid anchor at the first detected beat so the grid lands on the
+    # downbeat instead of being phase-shifted from a hardcoded 0.0.
     ET.SubElement(
         el,
         "TEMPO",
-        {"Inizio": "0.0", "Bpm": f"{bpm:.2f}", "Metro": "4/4", "Battito": "1"},
+        {
+            "Inizio": f"{first_beat:.3f}",
+            "Bpm": f"{bpm:.2f}",
+            "Metro": "4/4",
+            "Battito": "1",
+        },
     )
     return el
 

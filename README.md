@@ -50,6 +50,7 @@ crate add "https://youtube.com/watch?v=dQw4w9WgXcQ"
 crate add "artist name track name"              # ytsearch1, asks to confirm
 crate add "artist - track" --yes                # skip the confirmation
 crate add "<url>" --artist "Fisher" --title "Losing It (Extended Mix)"
+crate add "<url>" --genre "Tech House"          # set genre (YouTube rarely supplies one)
 crate add "<url>" --crate "Tech House"          # also file it in a crate
 crate add "<url>" --force                        # re-download a known URL
 ```
@@ -63,10 +64,19 @@ crate add "<url>" --force                        # re-download a known URL
 - Files are saved as `Artist - Title.aiff` in the library folder.
 - A source URL already in the DB is skipped unless you pass `--force`.
 
-### `crate scan <folder> [--crate NAME]`
+### `crate scan <folder> [--crate NAME] [--genre G] [--no-analyze]`
 Walk a folder for audio files (`aiff, wav, flac, mp3, m4a`), then analyze, tag,
 and add any not already tracked (deduped by absolute path). Shows a progress bar
 and a summary table (added / skipped / failed).
+
+Use `--no-analyze` to trust the files' existing tags and skip BPM/key detection —
+important when pointing it at a library already analyzed by Mixed In Key or
+Rekordbox, so crate doesn't overwrite better data. `--genre` sets the genre on
+everything found.
+
+### `crate rm <track-id> [--delete-file]`
+Remove a track from the library and its crate assignments (asks to confirm; skip
+with `--yes`). The audio file is kept on disk unless you pass `--delete-file`.
 
 ### `crate analyze <file | track-id | all>`
 Re-run BPM/key analysis (e.g. after improving the analysis) and update tags + DB.
@@ -106,6 +116,12 @@ Default output: `~/Music/crate/rekordbox.xml`.
 2. Set "Imported Library" to your `rekordbox.xml`
 3. In the tree view, open the **rekordbox xml** node and import.
 
+> **Tip:** Rekordbox uses the BPM, key, and beatgrid from this XML on import. To
+> stop it from re-analyzing and overwriting them, turn off auto-analysis for
+> imported tracks (Preferences → Analysis) and don't manually re-run "Analyze
+> Track". The beatgrid is anchored to the first detected beat (`Inizio`), so it
+> should land on the downbeat rather than at 0:00.
+
 ### `crate config`
 ```bash
 crate config --show
@@ -126,6 +142,10 @@ tracks whose files are missing on disk. `--prune` removes those dead entries.
   major/minor keys; best correlation wins, then mapped to Camelot.
 - **BPM:** `librosa.beat.beat_track`, with octave-error correction — tempos under
   90 are doubled and over 160 are halved (noted in the output when applied).
+  librosa is decent but not Mixed-In-Key accurate on four-on-the-floor; treat the
+  BPM as a strong starting point and sanity-check on import.
+- **Beatgrid anchor:** the first detected beat is exported as the Rekordbox
+  `Inizio`, so the grid lands on the downbeat instead of at 0:00.
 - Only the first ~120 s of audio is loaded, which is plenty for key/BPM and keeps
   it fast.
 

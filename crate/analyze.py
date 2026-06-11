@@ -66,6 +66,7 @@ class AnalysisResult:
     tonality: str  # rekordbox-style, e.g. "Am" or "C"
     key_name: str  # human, e.g. "A minor"
     duration: float
+    first_beat: float  # seconds — beatgrid anchor for Rekordbox's Inizio
 
 
 def camelot_from_key(pitch_class: int, mode: str) -> str:
@@ -169,9 +170,14 @@ def analyze_file(path: str, max_duration: float = 120.0) -> AnalysisResult:
     chroma_mean = chroma.mean(axis=1)
     pitch_class, mode, _ = detect_key_from_chroma(chroma_mean)
 
-    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+    tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
     raw_bpm = float(np.atleast_1d(tempo)[0])
     bpm, corrected = correct_bpm(raw_bpm)
+
+    # First detected beat → grid anchor so Rekordbox's beatgrid lands on the
+    # downbeat instead of being phase-shifted from a hardcoded 0.0.
+    beat_times = librosa.frames_to_time(beats, sr=sr)
+    first_beat = float(beat_times[0]) if len(beat_times) else 0.0
 
     return AnalysisResult(
         bpm=bpm,
@@ -182,4 +188,5 @@ def analyze_file(path: str, max_duration: float = 120.0) -> AnalysisResult:
         tonality=tonality_from_key(pitch_class, mode),
         key_name=key_name(pitch_class, mode),
         duration=duration,
+        first_beat=first_beat,
     )

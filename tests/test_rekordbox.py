@@ -42,6 +42,7 @@ def _fake_track(tmp_path):
         "size": 1024,
         "date_added": "2026-06-10",
         "tonality": "Am",
+        "first_beat": 0.123,
     }
 
 
@@ -71,7 +72,7 @@ def test_generate_xml_structure(tmp_path):
     tempo = t.find("TEMPO")
     assert tempo.attrib["Bpm"] == "124.00"
     assert tempo.attrib["Metro"] == "4/4"
-    assert tempo.attrib["Inizio"] == "0.0"
+    assert tempo.attrib["Inizio"] == "0.123"  # first-beat anchor, not 0.0
 
     # Playlists node tree.
     root_node = root.find("PLAYLISTS/NODE")
@@ -82,6 +83,14 @@ def test_generate_xml_structure(tmp_path):
     assert pl.attrib["Name"] == "My Crate"
     ref = pl.find("TRACK")
     assert ref.attrib["Key"] == "7"
+
+
+def test_tempo_defaults_to_zero_anchor_when_no_first_beat(tmp_path):
+    track = _fake_track(tmp_path)
+    del track["first_beat"]
+    xml = generate_xml([track], {})
+    tempo = ET.fromstring(xml).find("COLLECTION/TRACK/TEMPO")
+    assert tempo.attrib["Inizio"] == "0.000"
 
 
 def test_generate_xml_empty_collection():

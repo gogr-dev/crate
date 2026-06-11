@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS tracks (
     source_url  TEXT NOT NULL DEFAULT '',
     duration    REAL NOT NULL DEFAULT 0,
     size        INTEGER NOT NULL DEFAULT 0,
-    date_added  TEXT NOT NULL DEFAULT ''
+    date_added  TEXT NOT NULL DEFAULT '',
+    first_beat  REAL NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS crates (
@@ -49,8 +50,16 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after the first release to existing DBs."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(tracks)").fetchall()}
+    if "first_beat" not in cols:
+        conn.execute("ALTER TABLE tracks ADD COLUMN first_beat REAL NOT NULL DEFAULT 0")
 
 
 def add_track(
@@ -96,18 +105,18 @@ def update_analysis(
     tonality: str,
     camelot: str,
     duration: float | None = None,
+    first_beat: float | None = None,
 ) -> None:
+    sets = ["bpm=?", "key_name=?", "tonality=?", "camelot=?"]
+    params: list[Any] = [bpm, key_name, tonality, camelot]
     if duration is not None:
-        conn.execute(
-            "UPDATE tracks SET bpm=?, key_name=?, tonality=?, camelot=?, duration=? "
-            "WHERE id=?",
-            (bpm, key_name, tonality, camelot, duration, track_id),
-        )
-    else:
-        conn.execute(
-            "UPDATE tracks SET bpm=?, key_name=?, tonality=?, camelot=? WHERE id=?",
-            (bpm, key_name, tonality, camelot, track_id),
-        )
+        sets.append("duration=?")
+        params.append(duration)
+    if first_beat is not None:
+        sets.append("first_beat=?")
+        params.append(first_beat)
+    params.append(track_id)
+    conn.execute(f"UPDATE tracks SET {', '.join(sets)} WHERE id=?", params)
     conn.commit()
 
 
