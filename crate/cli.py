@@ -418,8 +418,9 @@ def list_tracks(
     table.add_column("Key", style="magenta")
     table.add_column("Crates", style="blue")
     table.add_column("Added", style="dim")
+    crate_map = db.crates_by_track(conn)
     for row in rows:
-        crates = ", ".join(db.crates_for_track(conn, int(row["id"])))
+        crates = ", ".join(crate_map.get(int(row["id"]), []))
         bpm_val = f"{row['bpm']:g}" if row["bpm"] is not None else "—"
         table.add_row(
             str(row["id"]), row["title"] or "—", row["artist"] or "—",
@@ -492,6 +493,8 @@ def export(
     cfg = load_config()
     conn = get_conn()
     tracks = db.all_tracks(conn)
+    if not tracks:
+        die("library is empty — add some tracks before exporting.")
 
     playlists: dict[str, list[int]] = {}
     for crate in db.list_crates(conn):

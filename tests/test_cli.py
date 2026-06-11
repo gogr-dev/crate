@@ -315,6 +315,17 @@ def test_list_crate_filter(populated):
     assert "Charlie" not in r.output
 
 
+def test_list_renders_multiple_crates(populated, monkeypatch):
+    # A track in two crates should show both names in the Crates column.
+    monkeypatch.setenv("COLUMNS", "200")  # avoid rich truncating the wide row
+    runner.invoke(cli.app, ["crate", "assign", "1", "Warmup"])
+    runner.invoke(cli.app, ["crate", "assign", "1", "PeakTime"])
+    r = runner.invoke(cli.app, ["list"])
+    assert r.exit_code == 0
+    assert "Warmup" in r.output
+    assert "PeakTime" in r.output
+
+
 def test_list_empty(home):
     r = runner.invoke(cli.app, ["list"])
     assert r.exit_code == 0
@@ -389,6 +400,14 @@ def test_export_writes_xml(populated, tmp_path):
     assert "<DJ_PLAYLISTS" in text
     assert 'Name="Set A"' in text
     assert "Import into Rekordbox" in r.output
+
+
+def test_export_empty_library_errors(home, tmp_path):
+    out = tmp_path / "rb.xml"
+    r = runner.invoke(cli.app, ["export", "--out", str(out)])
+    assert r.exit_code == 1
+    assert "library is empty" in full_output(r)
+    assert not out.exists()  # nothing written
 
 
 # ============================================================ error paths

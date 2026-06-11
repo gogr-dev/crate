@@ -61,6 +61,21 @@ def test_crate_assignment_and_multi(conn, tmp_path):
     assert db.tracks_in_crate(conn, "House") == [tid]
 
 
+def test_crates_by_track_bulk(conn, tmp_path):
+    t1 = _add(conn, tmp_path, name="b1")
+    t2 = _add(conn, tmp_path, name="b2")
+    _add(conn, tmp_path, name="b3")  # in no crate
+    db.assign_track(conn, t1, "House")
+    db.assign_track(conn, t1, "Peak Time")
+    db.assign_track(conn, t2, "House")
+
+    by_track = db.crates_by_track(conn)
+    assert by_track[t1] == ["House", "Peak Time"]  # multi-crate, name-sorted
+    assert by_track[t2] == ["House"]
+    # Matches the per-track query, and uncrated tracks are simply absent.
+    assert by_track == {t1: db.crates_for_track(conn, t1), t2: db.crates_for_track(conn, t2)}
+
+
 def test_crate_counts_and_remove(conn, tmp_path):
     t1 = _add(conn, tmp_path, name="x1")
     t2 = _add(conn, tmp_path, name="x2")

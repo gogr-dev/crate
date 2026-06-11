@@ -207,6 +207,26 @@ def crates_for_track(conn: sqlite3.Connection, track_id: int) -> list[str]:
     return [r["name"] for r in rows]
 
 
+def crates_by_track(conn: sqlite3.Connection) -> dict[int, list[str]]:
+    """Crate names per track id, in one pass over the join table.
+
+    Avoids the N+1 of calling :func:`crates_for_track` once per row when
+    rendering the whole library.
+    """
+    rows = conn.execute(
+        """
+        SELECT tc.track_id AS tid, c.name AS name
+        FROM track_crates tc
+        JOIN crates c ON c.id = tc.crate_id
+        ORDER BY tc.track_id, c.name
+        """
+    ).fetchall()
+    out: dict[int, list[str]] = {}
+    for r in rows:
+        out.setdefault(int(r["tid"]), []).append(r["name"])
+    return out
+
+
 def tracks_in_crate(conn: sqlite3.Connection, crate_name: str) -> list[int]:
     rows = conn.execute(
         """
