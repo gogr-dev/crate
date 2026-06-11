@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextvars
+import functools
 import sqlite3
 from pathlib import Path
 from typing import Optional
@@ -13,7 +15,7 @@ from rich.table import Table
 
 from . import db
 from .analyze import analyze_file, compatible_camelot
-from .config import DB_PATH, VALID_FORMATS, Config, load_config, save_config
+from .config import DB_PATH, VALID_FORMATS, load_config, save_config
 from .download import (
     DownloadError,
     download_audio,
@@ -44,8 +46,28 @@ def die(message: str) -> "typer.Exit":
     raise typer.Exit(1)
 
 
+_conn_var: contextvars.ContextVar[sqlite3.Connection] = contextvars.ContextVar("crate_conn")
+
+
+def with_db(func):
+    """Open a DB connection for the duration of a command and guarantee it is
+    closed on every exit path — including the typer.Exit raised by die()."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        conn = db.connect(DB_PATH)
+        token = _conn_var.set(conn)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            _conn_var.reset(token)
+            conn.close()
+
+    return wrapper
+
+
 def get_conn() -> sqlite3.Connection:
-    return db.connect(DB_PATH)
+    """The connection opened by @with_db for the current command."""
+    return _conn_var.get()
 
 
 def _analyze_and_tag(
@@ -86,6 +108,7 @@ def _analyze_and_tag(
 # ---------------------------------------------------------------- add
 
 @app.command()
+@with_db
 def add(
     target: str = typer.Argument(..., help="URL or search query."),
     crate: Optional[str] = typer.Option(None, "--crate", help="Assign to this crate."),
@@ -180,6 +203,7 @@ def add(
 # ---------------------------------------------------------------- scan
 
 @app.command()
+@with_db
 def scan(
     folder: Path = typer.Argument(..., help="Folder to scan for audio files."),
     crate: Optional[str] = typer.Option(None, "--crate", help="Assign found tracks."),
@@ -265,6 +289,7 @@ def scan(
 # ---------------------------------------------------------------- analyze
 
 @app.command()
+@with_db
 def analyze(
     target: str = typer.Argument(..., help="A file path, a track id, or 'all'."),
 ) -> None:
@@ -285,10 +310,12 @@ def analyze(
             die(f"file not tracked: {path}")
         rows = [row]
 
+    failed = 0
     for row in rows:
         path = Path(row["path"])
         if not path.exists():
             err_console.print(f"[yellow]missing[/] {path}")
+            failed += 1
             continue
         try:
             result = _analyze_and_tag(
@@ -302,12 +329,18 @@ def analyze(
                 f"[magenta]{result.camelot}[/] ({result.key_name})"
             )
         except Exception as exc:  # noqa: BLE001
-            err_console.print(f"[red]failed[/] #{row['id']}: {exc}")
+            msg = (str(exc).strip() or exc.__class__.__name__).splitlines()[0]
+            err_console.print(f"[red]failed[/] #{row['id']}: {msg}")
+            failed += 1
+
+    if failed:
+        raise typer.Exit(1)
 
 
 # ---------------------------------------------------------------- rm
 
 @app.command()
+@with_db
 def rm(
     track_id: int = typer.Argument(..., help="Track id to remove."),
     delete_file: bool = typer.Option(
@@ -340,6 +373,7 @@ def rm(
 # ---------------------------------------------------------------- list
 
 @app.command(name="list")
+@with_db
 def list_tracks(
     crate: Optional[str] = typer.Option(None, "--crate", help="Only this crate."),
     key: Optional[str] = typer.Option(None, "--key", help="Exact Camelot key (e.g. 8A)."),
@@ -397,6 +431,7 @@ def list_tracks(
 # ---------------------------------------------------------------- crates
 
 @app.command()
+@with_db
 def crates() -> None:
     """List all crates and their track counts."""
     conn = get_conn()
@@ -413,6 +448,7 @@ def crates() -> None:
 
 
 @crate_app.command("add")
+@with_db
 def crate_add(name: str = typer.Argument(..., help="Crate name.")) -> None:
     """Create a crate."""
     conn = get_conn()
@@ -421,6 +457,7 @@ def crate_add(name: str = typer.Argument(..., help="Crate name.")) -> None:
 
 
 @crate_app.command("assign")
+@with_db
 def crate_assign(
     track_id: int = typer.Argument(..., help="Track id."),
     name: str = typer.Argument(..., help="Crate name."),
@@ -434,6 +471,7 @@ def crate_assign(
 
 
 @crate_app.command("rm")
+@with_db
 def crate_rm(name: str = typer.Argument(..., help="Crate name.")) -> None:
     """Remove a crate (tracks themselves are kept)."""
     conn = get_conn()
@@ -446,6 +484,7 @@ def crate_rm(name: str = typer.Argument(..., help="Crate name.")) -> None:
 # ---------------------------------------------------------------- export
 
 @app.command()
+@with_db
 def export(
     out: Optional[Path] = typer.Option(None, "--out", help="Output XML path."),
 ) -> None:
@@ -524,6 +563,7 @@ def config(
 # ---------------------------------------------------------------- doctor
 
 @app.command()
+@with_db
 def doctor(
     prune: bool = typer.Option(False, "--prune", help="Remove DB entries for missing files."),
 ) -> None:

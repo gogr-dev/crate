@@ -39,6 +39,14 @@ CREATE TABLE IF NOT EXISTS track_crates (
     crate_id INTEGER NOT NULL REFERENCES crates(id) ON DELETE CASCADE,
     PRIMARY KEY (track_id, crate_id)
 );
+
+-- Indexes for the hot paths as the library grows: dedupe-on-add (source_url),
+-- list filters (camelot, bpm), and crate-membership joins (crate_id). Created
+-- with IF NOT EXISTS so this is safe to re-run on existing databases.
+CREATE INDEX IF NOT EXISTS idx_tracks_source_url ON tracks(source_url);
+CREATE INDEX IF NOT EXISTS idx_tracks_camelot ON tracks(camelot);
+CREATE INDEX IF NOT EXISTS idx_tracks_bpm ON tracks(bpm);
+CREATE INDEX IF NOT EXISTS idx_track_crates_crate ON track_crates(crate_id);
 """
 
 
@@ -156,10 +164,6 @@ def create_crate(conn: sqlite3.Connection, name: str) -> int:
     conn.commit()
     row = conn.execute("SELECT id FROM crates WHERE name=?", (name,)).fetchone()
     return int(row["id"])
-
-
-def get_crate(conn: sqlite3.Connection, name: str) -> sqlite3.Row | None:
-    return conn.execute("SELECT * FROM crates WHERE name=?", (name.strip(),)).fetchone()
 
 
 def remove_crate(conn: sqlite3.Connection, name: str) -> bool:
